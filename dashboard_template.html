@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Student Performance Analysis</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#F4F5F7; --card:#FFFFFF; --ink:#16181D; --muted:#667085; --line:#E3E5EA;
+    --a1:#6D4AFF; --a2:#12B886; --a3:#F59F00; --a4:#3B5BDB; --a5:#E8590C; --bad:#E03131;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#0F1115; --card:#181B21; --ink:#ECEEF2; --muted:#98A1B3; --line:#2A2E37; --a1:#A594FF; --a2:#3DD6A5; --a3:#FFC94D; --a4:#7C93FF; --a5:#FF9457; --bad:#FF7A7A; }
+  }
+  :root[data-theme="dark"] { --bg:#0F1115; --card:#181B21; --ink:#ECEEF2; --muted:#98A1B3; --line:#2A2E37; --a1:#A594FF; --a2:#3DD6A5; --a3:#FFC94D; --a4:#7C93FF; --a5:#FF9457; --bad:#FF7A7A; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); }
+  .wrap { max-width:1120px; margin:0 auto; padding:28px 20px 56px; }
+  header { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; justify-content:space-between; margin-bottom:22px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; letter-spacing:-0.01em; }
+  .sub { color:var(--muted); font-size:.85rem; margin:0; }
+  .filters { display:flex; flex-wrap:wrap; gap:10px; }
+  .filters label { font-size:.72rem; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+  select { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:.9rem; min-width:130px; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; }
+  .kpi .lbl { font-size:.78rem; color:var(--muted); margin-bottom:8px; }
+  .kpi .val { font-size:1.6rem; font-weight:700; letter-spacing:-0.02em; }
+  .kpi .note { font-size:.75rem; color:var(--muted); margin-top:6px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+  .grid3 { display:grid; grid-template-columns:1.3fr 1fr; gap:14px; margin-top:14px; }
+  .card h2 { font-size:.95rem; margin:0 0 14px; }
+  .chartbox { position:relative; height:270px; }
+  .chartbox.sm { height:220px; }
+  .insights ul { margin:0; padding-left:18px; }
+  .insights li { font-size:.9rem; line-height:1.7; }
+  .insights li b { color:var(--a1); }
+  .foot { color:var(--muted); font-size:.75rem; margin-top:22px; }
+  @media (max-width:820px) { .kpis { grid-template-columns:1fr 1fr; } .grid2, .grid3 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Student Performance Analysis</h1>
+      <p class="sub" id="sub"></p>
+    </div>
+    <div class="filters">
+      <label>Class<select id="cls"></select></label>
+      <label>Subject<select id="subject"></select></label>
+      <label>Term<select id="term"></select></label>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="card kpi"><div class="lbl">Average marks</div><div class="val" id="k-marks"></div><div class="note" id="k-n"></div></div>
+    <div class="card kpi"><div class="lbl">Average attendance</div><div class="val" id="k-att"></div><div class="note">Of scheduled classes</div></div>
+    <div class="card kpi"><div class="lbl">Average study hours</div><div class="val" id="k-hrs"></div><div class="note">Per week</div></div>
+    <div class="card kpi"><div class="lbl">Pass rate</div><div class="val" id="k-pass"></div><div class="note">Marks 40 or above</div></div>
+  </div>
+
+  <div class="card">
+    <h2 id="trend-title">Term-wise performance trend</h2>
+    <div class="chartbox"><canvas id="trend"></canvas></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h2>Subject-wise average marks</h2><div class="chartbox"><canvas id="subjChart"></canvas></div></div>
+    <div class="card"><h2>Class-wise average marks</h2><div class="chartbox"><canvas id="classChart"></canvas></div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h2>Grade distribution</h2><div class="chartbox"><canvas id="gradeChart"></canvas></div></div>
+    <div class="card">
+      <h2>Performance by study habits</h2>
+      <div class="chartbox sm"><canvas id="attBandChart"></canvas></div>
+      <div class="chartbox sm"><canvas id="hrsBandChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card insights">
+    <h2>Insights for improving results</h2>
+    <ul id="insights"></ul>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const D = __DATA__;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pct = n => n.toFixed(1) + '%';
+const fill = (id, opts) => { $(id).innerHTML = ['All', ...opts].map(o => `<option>${o}</option>`).join(''); };
+fill('cls', D.classes); fill('subject', D.subjects); fill('term', D.terms.map(String));
+let charts = {};
+
+// row = [student_id, class, term, subject, marks, attendance_pct, study_hours]
+function pick(skip) {
+  const c=$('cls').value, s=$('subject').value, t=$('term').value;
+  return D.rows.filter(x => (skip==='class'||c==='All'||x[1]===c) && (skip==='subject'||s==='All'||x[3]===s) && (skip==='term'||t==='All'||String(x[2])===t));
+}
+const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+function group(rows, keyFn, valFn) {
+  const m = new Map();
+  rows.forEach(x => { const k = keyFn(x); (m.get(k) || m.set(k,[]).get(k)).push(valFn(x)); });
+  return [...m.entries()].map(([k,v]) => [k, mean(v)]);
+}
+function grade(m) { return m>=90?'A': m>=75?'B': m>=60?'C': m>=40?'D':'F'; }
+function draw(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  Chart.defaults.color = css('--muted'); Chart.defaults.borderColor = css('--line');
+  charts[id] = new Chart($(id), cfg);
+}
+
+function render() {
+  const rows = pick();
+  const marksArr = rows.map(x=>x[4]);
+  $('k-marks').textContent = mean(marksArr).toFixed(1);
+  $('k-n').textContent = rows.length.toLocaleString('en-IN') + ' records';
+  $('k-att').textContent = pct(mean(rows.map(x=>x[5])));
+  $('k-hrs').textContent = mean(rows.map(x=>x[6])).toFixed(1) + ' hrs';
+  $('k-pass').textContent = pct(rows.filter(x=>x[4]>=40).length / (rows.length||1) * 100);
+
+  // Term-wise trend: one line per subject if "All" subjects selected, else one line for the chosen subject
+  const subjSel = $('subject').value;
+  const lines = subjSel === 'All' ? D.subjects : [subjSel];
+  const palette = [css('--a1'),css('--a2'),css('--a3'),css('--a4'),css('--a5')];
+  const trendRows = pick('subject');
+  $('trend-title').textContent = subjSel === 'All' ? 'Term-wise performance trend (by subject)' : `Term-wise trend — ${subjSel}`;
+  draw('trend', { type:'line', data:{ labels: D.terms.map(t=>'Term '+t), datasets: lines.map((subj,i) => {
+      const g = group(trendRows.filter(x=>x[3]===subj), x=>x[2], x=>x[4]);
+      const byTerm = Object.fromEntries(g);
+      return { label: subj, data: D.terms.map(t=>byTerm[t]!==undefined?+byTerm[t].toFixed(1):null), borderColor: palette[i%5], backgroundColor: palette[i%5], tension:.3 };
+    }) }, options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ suggestedMin:0, suggestedMax:100 } } } });
+
+  // Subject-wise bar (ignores subject filter so all subjects stay visible)
+  const bySubj = group(pick('subject'), x=>x[3], x=>x[4]).sort((a,b)=>b[1]-a[1]);
+  draw('subjChart', { type:'bar', data:{ labels:bySubj.map(e=>e[0]), datasets:[{ label:'Avg marks', data:bySubj.map(e=>+e[1].toFixed(1)), backgroundColor: css('--a1'), borderRadius:5 }] },
+    options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', scales:{ x:{ suggestedMax:100 } }, plugins:{ legend:{ display:false } } } });
+
+  // Class-wise bar (ignores class filter)
+  const byCls = group(pick('class'), x=>x[1], x=>x[4]).sort((a,b)=>a[0]<b[0]?-1:1);
+  draw('classChart', { type:'bar', data:{ labels:byCls.map(e=>e[0]), datasets:[{ label:'Avg marks', data:byCls.map(e=>+e[1].toFixed(1)), backgroundColor: css('--a4'), borderRadius:5 }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ suggestedMax:100 } }, plugins:{ legend:{ display:false } } } });
+
+  // Grade distribution pie
+  const counts = {A:0,B:0,C:0,D:0,F:0};
+  marksArr.forEach(m => counts[grade(m)]++);
+  draw('gradeChart', { type:'pie', data:{ labels:Object.keys(counts), datasets:[{ data:Object.values(counts), backgroundColor:[css('--a2'),css('--a4'),css('--a3'),css('--a5'),css('--bad')] }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ tooltip:{ callbacks:{ label:c=>`${c.label}: ${c.parsed} (${(c.parsed/marksArr.length*100).toFixed(1)}%)` } } } } });
+
+  // Study-habit factor bands: aggregate to one row per student+term first (marks averaged across subjects)
+  const perStudent = group(rows, x=>x[0]+'-'+x[2], x=>x[4]).map(([k,marks]) => {
+    const [sid, t] = k.split('-'); const src = rows.find(x=>String(x[0])===sid && String(x[2])===t);
+    return { marks, att: src[5], hrs: src[6] };
+  });
+  const attBand = a => a>=90?'90-100%': a>=80?'80-89%': a>=70?'70-79%':'<70%';
+  const hrsBand = h => h>=12?'12+ hrs': h>=8?'8-11 hrs': h>=4?'4-7 hrs':'<4 hrs';
+  const attOrder = ['<70%','70-79%','80-89%','90-100%'], hrsOrder = ['<4 hrs','4-7 hrs','8-11 hrs','12+ hrs'];
+  const byAtt = group(perStudent, s=>attBand(s.att), s=>s.marks);
+  const byHrs = group(perStudent, s=>hrsBand(s.hrs), s=>s.marks);
+  const ordered = (arr, order) => order.map(k => [k, (arr.find(e=>e[0]===k)||[k,null])[1]]).filter(e=>e[1]!==null);
+  const oa = ordered(byAtt, attOrder), oh = ordered(byHrs, hrsOrder);
+  draw('attBandChart', { type:'bar', data:{ labels:oa.map(e=>e[0]), datasets:[{ label:'Avg marks by attendance', data:oa.map(e=>+e[1].toFixed(1)), backgroundColor:css('--a2'), borderRadius:5 }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ suggestedMax:100 } }, plugins:{ legend:{ display:false }, title:{ display:true, text:'By attendance band', color:css('--muted'), font:{size:11} } } } });
+  draw('hrsBandChart', { type:'bar', data:{ labels:oh.map(e=>e[0]), datasets:[{ label:'Avg marks by study hours', data:oh.map(e=>+e[1].toFixed(1)), backgroundColor:css('--a3'), borderRadius:5 }] },
+    options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ suggestedMax:100 } }, plugins:{ legend:{ display:false }, title:{ display:true, text:'By study-hours band', color:css('--muted'), font:{size:11} } } } });
+
+  $('sub').textContent = `${rows.length.toLocaleString('en-IN')} exam records shown · Terms ${D.terms[0]}–${D.terms[D.terms.length-1]}`;
+}
+['cls','subject','term'].forEach(id => $(id).addEventListener('change', render));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+$('insights').innerHTML = D.insights.map(i => `<li>${i}</li>`).join('');
+$('foot').textContent = D.note;
+render();
+</script>
+</body>
+</html>
